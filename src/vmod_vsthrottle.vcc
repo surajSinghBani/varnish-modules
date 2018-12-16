@@ -143,3 +143,51 @@ Example
 	set resp.http.Retry-After
 		= vsthrottle.blocked(client.identity, 15, 10s, 30s);
      }
+
+#### SSB ####
+
+# For unblocing an IP
+$Function VOID purge_single_ip(STRING key, INT limit, DURATION period, DURATION block)
+
+Arguments:
+  - key: A unique identifier to define what is being throttled
+  - limit: How many requests in the specified period
+  - period: The time period
+  - block: duration to block
+
+
+Description
+
+  If a token bucket is dentified by the four parameters,
+  then it will reset the tokens for that token bucket,
+  i.e. it will unblock that ip for that time.
+
+
+Example
+  ::
+
+     sub vcl_deliver {
+        vsthrottle.purge_single_ip("206.191.159.153", 15, 10s, 30s);
+     }
+
+
+$Function STRING host(STRING key)
+
+Arguments:
+  - key: A unique identifier to define what is being throttled
+
+Description
+
+ It performs a DNS Lookup to find the host of the user's IP.
+ Implemented so that we can identify the Google bot & make
+ sure they are not getting blocked.
+
+Example
+  ::
+
+     sub vcl_deliver {
+        set resp.http.shost
+                = vsthrottle.host(req.http.client.ip);
+     }
+
+      

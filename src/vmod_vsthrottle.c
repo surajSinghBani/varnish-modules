@@ -35,6 +35,8 @@
 #include <pthread.h>
 #include <errno.h>
 
+#include <arpa/inet.h>
+#include <netdb.h>
 #include "vmod_config.h"
 
 #include "vas.h"
@@ -47,6 +49,7 @@
 
 #include "vcc_vsthrottle_if.h"
 
+char node[NI_MAXHOST];
 
 /* Represents a token bucket for a specific key. */
 struct tbucket {
@@ -325,3 +328,50 @@ event_function(VRT_CTX, struct vmod_priv *priv, enum vcl_event_e e)
 	AZ(pthread_mutex_unlock(&init_mtx));
 	return (0);
 }
+
+void vmod_purge_single_ip(VRT_CTX, VCL_STRING key, VCL_INT limit, VCL_DURATION period,
+               VCL_DURATION block)
+{
+        (void)ctx;
+        unsigned char digest[SHA256_LEN];
+
+        do_digest(digest, key, limit, period, block);
+        unsigned part = digest[0] & N_PART_MASK;
+
+        struct tbucket k, *b;
+        memcpy(&k.digest, digest, sizeof k.digest);
+        struct tbtree *buckets = &vsthrottle[part].buckets;
+
+        b = VRB_FIND(tbtree, buckets, &k);
+
+        if (b) {
+                CHECK_OBJ_NOTNULL(b, TBUCKET_MAGIC);
+        }
+
+        VRB_REMOVE(tbtree, buckets, b);
+        free(b);
+}
+
+VCL_STRING vmod_host(VRT_CTX, VCL_STRING key)
+{
+    (void)ctx;
+
+    struct sockaddr_in sa;
+
+    memset(&sa, 0, sizeof sa);
+
+    sa.sin_family = AF_INET;
+    inet_pton(AF_INET, key, &sa.sin_addr);
+
+
+    int res = getnameinfo((struct sockaddr*)&sa, sizeof(sa),
+                          node, sizeof(node),
+                          NULL, 0, NI_NAMEREQD);
+
+    if (res) {
+        return(gai_strerror(res));
+        }
+    else
+       return (char *)node;
+}
+
